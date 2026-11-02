@@ -151,6 +151,24 @@ app.post('/api/projects', upload.array('files'), async (req, res, next) => {
   }
 });
 
+// Переименование проекта (меняется и ссылка на него)
+app.patch('/api/projects/:name', express.json(), async (req, res, next) => {
+  try {
+    const from = req.params.name;
+    const to = String(req.body?.name || '').trim();
+    if (!NAME_RE.test(from)) throw new HttpError(400, 'Неверное имя');
+    if (!NAME_RE.test(to)) throw new HttpError(400, 'Имя: латиница, цифры, точка, дефис, подчёркивание (до 64 символов)');
+    const src = path.join(ROOT, from);
+    const dst = path.join(ROOT, to);
+    if (!(await exists(src))) throw new HttpError(404, 'Проект не найден');
+    if (from !== to) {
+      if (await exists(dst)) throw new HttpError(409, `Проект «${to}» уже существует`);
+      await fs.rename(src, dst);
+    }
+    res.json({ name: to, ...(await inspect(dst)) });
+  } catch (e) { next(e); }
+});
+
 app.delete('/api/projects/:name', async (req, res, next) => {
   try {
     if (!NAME_RE.test(req.params.name)) throw new HttpError(400, 'Неверное имя');
