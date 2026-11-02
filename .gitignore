@@ -3,3 +3,4 @@ node_modules
 dist
 data
 test-samples
+.DS_Store
