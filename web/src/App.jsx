@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
-
 const publicUrl = (p) =>
   `${location.origin}/public/static/${encodeURIComponent(p.name)}/${p.entry && p.entry !== 'index.html' ? encodeURIComponent(p.entry) : ''}`;
 
@@ -14,14 +12,25 @@ const fmtSize = (b) => {
 const fmtDate = (ms) =>
   new Date(ms).toLocaleString('ru-RU', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-const slugify = (s) =>
-  s.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[-._]+|[-._]+$/g, '').slice(0, 64);
+const TRANSLIT = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'yo', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm',
+  н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'shch',
+  ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya', і: 'i', ї: 'yi', є: 'ye', ґ: 'g',
+};
 
+// «Урок истории №43» -> «urok-istorii-no43» (то же правило, что на сервере)
+function slugify(title) {
+  const lat = [...title.normalize('NFC').toLowerCase()].map((c) => TRANSLIT[c] ?? c).join('')
+    .normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
+  return lat.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64).replace(/-+$/, '') || 'site';
+}
+
+// Название по умолчанию: имя файла без расширения или имя папки (как есть, с кириллицей и пробелами)
 function suggestName(items) {
   if (!items.length) return '';
-  if (items.length === 1) return slugify(items[0].path.replace(/\.[^.]+$/, ''));
+  if (items.length === 1) return items[0].path.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ');
   const first = items[0].path.split('/');
-  return first.length > 1 ? slugify(first[0]) : '';
+  return first.length > 1 ? first[0].replace(/[_]+/g, ' ') : '';
 }
 
 // ---------- иконки ----------
@@ -84,10 +93,11 @@ async function fromDrop(dt) {
 const fromInput = (fileList) =>
   [...fileList].map((file) => ({ file, path: file.webkitRelativePath || file.name }));
 
-function sendUpload({ name, overwrite, items, onProgress }) {
+function sendUpload({ title, slug, overwrite, items, onProgress }) {
   return new Promise((resolve, reject) => {
     const fd = new FormData();
-    fd.append('name', name);
+    fd.append('title', title);
+    if (slug) fd.append('slug', slug);
     fd.append('overwrite', overwrite ? 'true' : 'false');
     fd.append('paths', JSON.stringify(items.map((i) => i.path)));
     items.forEach((i) => fd.append('files', i.file, i.file.name));
@@ -117,7 +127,7 @@ export default function App() {
   const [projects, setProjects] = useState(null);
   const [items, setItems] = useState([]);
   const [name, setName] = useState('');
-  const [updating, setUpdating] = useState(null); // имя проекта, содержимое которого заменяем
+  const [updating, setUpdating] = useState(null); // ссылка (slug) проекта, содержимое которого заменяем
   const [overwrite, setOverwrite] = useState(false);
   const [progress, setProgress] = useState(null);
   const [dragging, setDragging] = useState(false);
@@ -157,9 +167,11 @@ export default function App() {
   const pick = (list) => {
     if (!list.length) return;
     setItems(list);
-    if (updating) { setName(updating); setOverwrite(true); }
+    if (updating) { setName(titleOf(updating)); setOverwrite(true); }
     else { setName(suggestName(list)); setOverwrite(false); }
   };
+
+  const titleOf = (slug) => (projects || []).find((p) => p.name === slug)?.title || slug;
 
   const reset = () => { setItems([]); setName(''); setUpdating(null); setOverwrite(false); };
 
@@ -172,9 +184,9 @@ export default function App() {
   const submit = async () => {
     setProgress(0);
     try {
-      const r = await sendUpload({ name: name.trim(), overwrite, items, onProgress: setProgress });
+      const r = await sendUpload({ title: name.trim(), slug: updating, overwrite, items, onProgress: setProgress });
       notify(
-        r.warning ? `Загружено, но: ${r.warning}` : updating ? `Содержимое «${r.name}» обновлено` : `Проект «${r.name}» опубликован`,
+        r.warning ? `Загружено, но: ${r.warning}` : updating ? `Содержимое «${r.title}» обновлено` : `Проект «${r.title}» опубликован`,
         r.warning ? 'err' : 'ok',
       );
       reset();
@@ -188,14 +200,14 @@ export default function App() {
   };
 
   const startUpdate = (p) => {
-    setItems([]); setName(p.name); setOverwrite(true); setUpdating(p.name);
+    setItems([]); setName(p.title); setOverwrite(true); setUpdating(p.name);
     dropRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
   const remove = async (p) => {
-    if (!confirm(`Удалить проект «${p.name}» без возможности восстановления?`)) return;
+    if (!confirm(`Удалить проект «${p.title}» без возможности восстановления?`)) return;
     const r = await fetch(`/api/projects/${encodeURIComponent(p.name)}`, { method: 'DELETE' });
-    if (r.ok) { notify(`Проект «${p.name}» удалён`); if (updating === p.name) reset(); load(); }
+    if (r.ok) { notify(`Проект «${p.title}» удалён`); if (updating === p.name) reset(); load(); }
     else notify('Не удалось удалить', 'err');
   };
 
@@ -205,26 +217,27 @@ export default function App() {
   };
 
   const commitRename = async () => {
-    const { name: from, value } = renaming;
-    const to = value.trim();
-    if (to === from) { setRenaming(null); return; }
-    if (!NAME_RE.test(to)) { notify('Имя: латиница, цифры, . - _ (до 64 символов)', 'err'); return; }
+    const { name: from, value, title: oldTitle } = renaming;
+    const title = value.trim();
+    if (!title) { notify('Введите название проекта', 'err'); return; }
+    if (title === oldTitle) { setRenaming(null); return; }
     const r = await fetch(`/api/projects/${encodeURIComponent(from)}`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: to }),
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }),
     });
+    const b = await r.json().catch(() => ({}));
     if (r.ok) {
-      notify(`Переименовано: «${from}» → «${to}». Ссылка изменилась`);
+      notify(b.name !== from ? `Переименовано. Новая ссылка: /public/static/${b.name}/` : 'Название изменено');
       if (updating === from) reset();
       setRenaming(null); load();
     } else {
-      const b = await r.json().catch(() => ({}));
       notify(b.error || 'Не удалось переименовать', 'err');
     }
   };
 
   const totalSize = items.reduce((s, i) => s + i.file.size, 0);
-  const valid = NAME_RE.test(name.trim());
-  const shown = (projects || []).filter((p) => p.name.toLowerCase().includes(query.toLowerCase()));
+  const slugPreview = updating || slugify(name.trim());
+  const valid = name.trim().length > 0 && [...name.trim()].length <= 100;
+  const shown = (projects || []).filter((p) => (p.title + ' ' + p.name).toLowerCase().includes(query.toLowerCase()));
 
   const nameCell = (p) =>
     renaming?.name === p.name ? (
@@ -238,14 +251,14 @@ export default function App() {
         <IconBtn icon="x" label="Отмена" onClick={() => setRenaming(null)} />
       </span>
     ) : (
-      <span className="pname" title={p.name}>{p.name}{!p.entry && <span className="badge">нет index.html</span>}</span>
+      <span className="pname" title={p.title}>{p.title}{!p.entry && <span className="badge">нет index.html</span>}</span>
     );
 
   const actions = (p) => (
     <div className="actions">
       <IconBtn icon="open" label="Открыть в браузере" href={p.entry ? publicUrl(p) : undefined} disabled={!p.entry} />
       <IconBtn icon="copy" label="Копировать ссылку" onClick={() => copy(p)} />
-      <IconBtn icon="edit" label="Переименовать" onClick={() => setRenaming({ name: p.name, value: p.name })} />
+      <IconBtn icon="edit" label="Переименовать" onClick={() => setRenaming({ name: p.name, title: p.title, value: p.title })} />
       <IconBtn icon="upload" label="Заменить содержимое" onClick={() => startUpdate(p)} active={updating === p.name} />
       <IconBtn icon="trash" label="Удалить" onClick={() => remove(p)} danger />
     </div>
@@ -292,9 +305,9 @@ export default function App() {
               </ul>
             </div>
             <label className="field">
-              <span>{updating ? 'Проект (содержимое будет заменено)' : 'Имя проекта (часть ссылки)'}</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="my-site" readOnly={!!updating} />
-              {name && !valid && <small className="err">Только латиница, цифры, . - _</small>}
+              <span>{updating ? 'Проект (содержимое будет заменено)' : 'Название проекта'}</span>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Например: Урок истории" readOnly={!!updating} maxLength={100} />
+              {name.trim() && <small className="slugline">Ссылка: <code>/public/static/{slugPreview}/</code></small>}
             </label>
             {!updating && (
               <label className="check">

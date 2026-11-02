@@ -12,9 +12,40 @@ const MAX_BYTES = (Number(process.env.MAX_UPLOAD_MB) || 500) * 1024 * 1024;
 const MAX_UNZIPPED = MAX_BYTES * 2;
 const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
 const JUNK = new Set(['__MACOSX', '.DS_Store', 'Thumbs.db']);
+// Читаемые названия проектов лежат отдельно от статики (не раздаются наружу)
+const META = process.env.META_DIR || path.join(path.dirname(ROOT), 'meta');
+
+const TRANSLIT = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'yo', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm',
+  н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'shch',
+  ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya', і: 'i', ї: 'yi', є: 'ye', ґ: 'g',
+};
+
+// «Урок истории №43» -> «urok-istorii-43»
+function slugify(title) {
+  const lat = [...String(title).normalize('NFC').toLowerCase()]
+    .map((c) => TRANSLIT[c] ?? c).join('')
+    .normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase();
+  const slug = lat.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64).replace(/-+$/, '');
+  return slug || 'site';
+}
+
+function cleanTitle(raw) {
+  const t = String(raw ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!t) throw new HttpError(400, 'Введите название проекта');
+  if ([...t].length > 100) throw new HttpError(400, 'Название слишком длинное (до 100 символов)');
+  return t;
+}
+
+const metaFile = (slug) => path.join(META, `${slug}.json`);
+async function readMeta(slug) {
+  try { return JSON.parse(await fs.readFile(metaFile(slug), 'utf8')); } catch { return {}; }
+}
+const writeMeta = (slug, data) => fs.writeFile(metaFile(slug), JSON.stringify(data));
 
 await fs.mkdir(ROOT, { recursive: true });
 await fs.mkdir(INCOMING, { recursive: true });
+await fs.mkdir(META, { recursive: true });
 
 const upload = multer({
   dest: INCOMING,
@@ -94,7 +125,7 @@ app.get('/api/projects', async (_req, res, next) => {
     const dirs = (await fs.readdir(ROOT, { withFileTypes: true }))
       .filter((d) => d.isDirectory() && !d.name.startsWith('.'));
     const list = await Promise.all(dirs.map(async (d) => ({
-      name: d.name, ...(await inspect(path.join(ROOT, d.name))),
+      name: d.name, title: (await readMeta(d.name)).title || d.name, ...(await inspect(path.join(ROOT, d.name))),
     })));
     list.sort((a, b) => b.mtime - a.mtime);
     res.json(list);
@@ -105,13 +136,14 @@ app.post('/api/projects', upload.array('files'), async (req, res, next) => {
   const files = req.files || [];
   const stage = path.join(STAGING, crypto.randomBytes(8).toString('hex'));
   try {
-    const name = String(req.body.name || '').trim();
-    if (!NAME_RE.test(name)) throw new HttpError(400, 'Имя: латиница, цифры, точка, дефис, подчёркивание (до 64 символов)');
+    const title = cleanTitle(req.body.title ?? req.body.name);
+    // slug (ссылка): явно заданный существующий проект либо транслит названия
+    const name = NAME_RE.test(String(req.body.slug || '')) ? String(req.body.slug) : slugify(title);
     if (!files.length) throw new HttpError(400, 'Нет файлов для загрузки');
 
     const target = path.join(ROOT, name);
     const overwrite = req.body.overwrite === 'true';
-    if ((await exists(target)) && !overwrite) throw new HttpError(409, `Проект «${name}» уже существует`);
+    if ((await exists(target)) && !overwrite) throw new HttpError(409, `Проект со ссылкой «${name}» уже существует`);
 
     let paths = [];
     try { paths = JSON.parse(req.body.paths || '[]'); } catch { /* ignore */ }
@@ -143,7 +175,8 @@ app.post('/api/projects', upload.array('files'), async (req, res, next) => {
       await fs.rename(src, target);
     }
     await fs.chmod(target, 0o755);
-    res.status(201).json({ name, ...(await inspect(target)), warning: info.entry ? null : 'В проекте нет index.html' });
+    await writeMeta(name, { title });
+    res.status(201).json({ name, title, ...(await inspect(target)), warning: info.entry ? null : 'В проекте нет index.html' });
   } catch (e) { next(e); }
   finally {
     await fs.rm(stage, { recursive: true, force: true }).catch(() => {});
@@ -151,21 +184,25 @@ app.post('/api/projects', upload.array('files'), async (req, res, next) => {
   }
 });
 
-// Переименование проекта (меняется и ссылка на него)
+// Переименование: меняется название; ссылка пересчитывается из названия (если транслит изменился)
 app.patch('/api/projects/:name', express.json(), async (req, res, next) => {
   try {
     const from = req.params.name;
-    const to = String(req.body?.name || '').trim();
     if (!NAME_RE.test(from)) throw new HttpError(400, 'Неверное имя');
-    if (!NAME_RE.test(to)) throw new HttpError(400, 'Имя: латиница, цифры, точка, дефис, подчёркивание (до 64 символов)');
+    const title = cleanTitle(req.body?.title ?? req.body?.name);
     const src = path.join(ROOT, from);
-    const dst = path.join(ROOT, to);
     if (!(await exists(src))) throw new HttpError(404, 'Проект не найден');
-    if (from !== to) {
-      if (await exists(dst)) throw new HttpError(409, `Проект «${to}» уже существует`);
+    const oldTitle = (await readMeta(from)).title || from;
+    let to = slugify(title);
+    if (to === slugify(oldTitle)) to = from; // правка регистра/пробелов не ломает ссылку
+    if (to !== from) {
+      const dst = path.join(ROOT, to);
+      if (await exists(dst)) throw new HttpError(409, `Проект со ссылкой «${to}» уже существует`);
       await fs.rename(src, dst);
+      await fs.rm(metaFile(from), { force: true });
     }
-    res.json({ name: to, ...(await inspect(dst)) });
+    await writeMeta(to, { title });
+    res.json({ name: to, title, ...(await inspect(path.join(ROOT, to))) });
   } catch (e) { next(e); }
 });
 
@@ -175,6 +212,7 @@ app.delete('/api/projects/:name', async (req, res, next) => {
     const target = path.join(ROOT, req.params.name);
     if (!(await exists(target))) throw new HttpError(404, 'Проект не найден');
     await fs.rm(target, { recursive: true, force: true });
+    await fs.rm(metaFile(req.params.name), { force: true });
     res.status(204).end();
   } catch (e) { next(e); }
 });
