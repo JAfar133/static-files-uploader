@@ -38,6 +38,7 @@ const paths = {
   open: <><path d="M14 4h6v6" /><path d="M20 4l-9 9" /><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" /></>,
   copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h8" /></>,
   edit: <><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z" /><path d="M13.5 6.5l4 4" /></>,
+  download: <><path d="M12 4v11" /><path d="M7 11l5 5 5-5" /><path d="M5 20h14" /></>,
   upload: <><path d="M12 16V5" /><path d="M7 9l5-5 5 5" /><path d="M5 19h14" /></>,
   trash: <><path d="M4 7h16" /><path d="M10 11v6M14 11v6" /><path d="M6 7l1 12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-12" /><path d="M9 7V4h6v3" /></>,
   grid: <><rect x="4" y="4" width="7" height="7" rx="1.5" /><rect x="13" y="4" width="7" height="7" rx="1.5" /><rect x="4" y="13" width="7" height="7" rx="1.5" /><rect x="13" y="13" width="7" height="7" rx="1.5" /></>,
@@ -51,11 +52,11 @@ const Icon = ({ name }) => (
   </svg>
 );
 
-function IconBtn({ icon, label, onClick, href, danger, active, disabled }) {
+function IconBtn({ icon, label, onClick, href, download, danger, active, disabled }) {
   const cls = `ibtn${danger ? ' danger' : ''}${active ? ' active' : ''}${disabled ? ' disabled' : ''}`;
-  if (icon === 'open') {
+  if (icon === 'open' || download) {
     return (
-      <a className={cls} href={disabled ? undefined : href} target="_blank" rel="noreferrer" title={label} aria-label={label}>
+      <a className={cls} href={disabled ? undefined : href} {...(download ? { download: '' } : { target: '_blank', rel: 'noreferrer' })} title={label} aria-label={label}>
         <Icon name={icon} />
       </a>
     );
@@ -258,6 +259,7 @@ export default function App() {
     <div className="actions">
       <IconBtn icon="open" label="Открыть в браузере" href={p.entry ? publicUrl(p) : undefined} disabled={!p.entry} />
       <IconBtn icon="copy" label="Копировать ссылку" onClick={() => copy(p)} />
+      <IconBtn icon="download" label="Скачать (файл или ZIP-архив)" href={`/api/projects/${encodeURIComponent(p.name)}/download`} download />
       <IconBtn icon="edit" label="Переименовать" onClick={() => setRenaming({ name: p.name, title: p.title, value: p.title })} />
       <IconBtn icon="upload" label="Заменить содержимое" onClick={() => startUpdate(p)} active={updating === p.name} />
       <IconBtn icon="trash" label="Удалить" onClick={() => remove(p)} danger />

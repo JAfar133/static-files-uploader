@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';
 import AdmZip from 'adm-zip';
+import archiver from 'archiver';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -182,6 +183,39 @@ app.post('/api/projects', upload.array('files'), async (req, res, next) => {
     await fs.rm(stage, { recursive: true, force: true }).catch(() => {});
     await Promise.all(files.map((f) => fs.rm(f.path, { force: true }).catch(() => {})));
   }
+});
+
+// Скачивание: один файл — как файл, иначе ZIP-архив (стримом)
+async function listFiles(dir, base = '') {
+  const out = [];
+  for (const e of await fs.readdir(path.join(dir, base), { withFileTypes: true })) {
+    const rel = base ? `${base}/${e.name}` : e.name;
+    if (e.isDirectory()) out.push(...(await listFiles(dir, rel)));
+    else if (e.isFile()) out.push(rel);
+  }
+  return out;
+}
+
+app.get('/api/projects/:name/download', async (req, res, next) => {
+  try {
+    const slug = req.params.name;
+    if (!NAME_RE.test(slug)) throw new HttpError(400, 'Неверное имя');
+    const dir = path.join(ROOT, slug);
+    if (!(await exists(dir))) throw new HttpError(404, 'Проект не найден');
+    const files = await listFiles(dir);
+    if (!files.length) throw new HttpError(404, 'В проекте нет файлов');
+
+    if (files.length === 1) {
+      return res.download(path.join(dir, files[0]), path.basename(files[0]), (err) => err && !res.headersSent && next(err));
+    }
+    const title = ((await readMeta(slug)).title || slug).replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').trim() || slug;
+    res.attachment(`${title}.zip`);
+    const zip = archiver('zip', { zlib: { level: 6 } });
+    zip.on('error', (err) => { console.error(err); res.destroy(err); });
+    zip.pipe(res);
+    zip.directory(dir, false);
+    await zip.finalize();
+  } catch (e) { next(e); }
 });
 
 // Переименование: меняется название; ссылка пересчитывается из названия (если транслит изменился)

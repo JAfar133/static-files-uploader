@@ -64,8 +64,8 @@ h2 { margin: 0; font-size: 18px; } h3 { margin: 0; font-size: 16px; overflow: hi
 .rename input:focus { outline: none; }
 .card-head { min-width: 0; }
 /* таблица */
-:root { --act-w: 186px; }
-@media (pointer: coarse) { :root { --act-w: 222px; } }
+:root { --act-w: 222px; }
+@media (pointer: coarse) { :root { --act-w: 266px; } }
 .table { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; }
 .trow { display: grid; grid-template-columns: minmax(0, 1fr) 80px 100px 170px var(--act-w); align-items: center; gap: 12px; padding: 8px 16px; border-top: 1px solid var(--border); }
 .trow:first-child { border-top: 0; }
