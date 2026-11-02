@@ -38,7 +38,7 @@ h2 { margin: 0; font-size: 18px; } h3 { margin: 0; font-size: 16px; overflow: hi
 .list-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
 .count { background: var(--border); color: var(--muted); border-radius: 99px; padding: 1px 10px; font-size: 13px; margin-left: 6px; }
 .search { font: inherit; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); width: 200px; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(290px, 100%), 1fr)); gap: 16px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px; display: grid; gap: 10px; box-shadow: var(--shadow); }
 .card-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .badge { margin-left: 8px; background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); font-size: 11px; padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
@@ -47,7 +47,6 @@ h2 { margin: 0; font-size: 18px; } h3 { margin: 0; font-size: 16px; overflow: hi
 .empty { text-align: center; color: var(--muted); padding: 40px; background: var(--surface); border: 1px dashed var(--border); border-radius: 16px; }
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ok); color: #fff; padding: 12px 20px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.25); max-width: calc(100% - 32px); }
 .toast.err { background: var(--danger); }
-@media (max-width: 520px) { .list-head { flex-direction: column; align-items: stretch; } .search { width: 100%; } }
 
 /* иконки-кнопки */
 .ibtn { appearance: none; display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; border: 1px solid transparent; background: transparent; color: var(--muted); cursor: pointer; text-decoration: none; transition: .15s; padding: 0; }
@@ -72,9 +71,53 @@ h2 { margin: 0; font-size: 18px; } h3 { margin: 0; font-size: 16px; overflow: hi
 .thead { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--bg); padding-top: 10px; padding-bottom: 10px; }
 .trow .actions { justify-content: flex-end; }
 .c-name { min-width: 0; }
-@media (max-width: 760px) {
-  .trow { grid-template-columns: minmax(0, 1fr) auto; }
+@media (max-width: 760px) and (min-width: 641px) {
+  .trow { grid-template-columns: minmax(0, 1fr) 70px 90px auto; }
+  .c-date { display: none; }
+}
+
+/* ---------- адаптивность ---------- */
+.c-meta { display: none; font-size: 13px; }
+input, button { -webkit-tap-highlight-color: transparent; }
+.toast { bottom: max(24px, env(safe-area-inset-bottom)); }
+
+/* сенсорные экраны: крупные цели нажатия, без зума iOS при фокусе в поле */
+@media (pointer: coarse) {
+  .ibtn { width: 42px; height: 42px; }
+  .btn { padding: 12px 20px; }
+  .field input, .search, .rename input { font-size: 16px; }
+}
+
+@media (max-width: 640px) {
+  .app { padding: 18px max(14px, env(safe-area-inset-left)) 48px max(14px, env(safe-area-inset-right)); }
+  .top { margin-bottom: 18px; gap: 12px; }
+  .logo { width: 44px; height: 44px; font-size: 24px; border-radius: 12px; }
+  h1 { font-size: 21px; }
+  .top p { font-size: 14px; }
+
+  .drop { padding: 24px 16px; margin-bottom: 26px; border-radius: 16px; }
+  .drop h2 { font-size: 17px; }
+  .drop .row { flex-direction: column; }
+  .drop .row .btn { width: 100%; text-align: center; }
+  .staged { max-width: none; }
+
+  .list-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .list-head h2 { display: flex; align-items: center; }
+  .tools { width: 100%; }
+  .tools .search { flex: 1; width: auto; min-width: 0; }
+
+  /* карточки: иконки равномерно на всю ширину */
+  .card { padding: 14px; }
+  .card .actions { justify-content: space-between; border-top: 1px solid var(--border); padding-top: 8px; margin: 2px -4px 0; }
+
+  /* таблица: название + мета-строка + иконки, три строки на проект */
+  .trow { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 12px 14px; }
+  .thead { display: none; }
   .c-files, .c-size, .c-date { display: none; }
-  .thead span:not(:first-child) { display: none; }
-  .tools { width: 100%; } .tools .search { flex: 1; width: auto; }
+  .c-meta { display: block; }
+  .trow .actions { justify-content: space-between; margin: 4px -4px 0; }
+}
+
+@media (max-width: 360px) {
+  .ibtn { width: 38px; height: 38px; }
 }

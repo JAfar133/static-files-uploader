@@ -105,7 +105,11 @@ function sendUpload({ name, overwrite, items, onProgress }) {
   });
 }
 
+const isTouch = typeof matchMedia === 'function' && matchMedia('(hover: none)').matches;
+
 const loadView = () => {
+  const q = new URLSearchParams(location.search).get('view');
+  if (q === 'list' || q === 'grid') return q;
   try { return localStorage.getItem('hub:view') === 'list' ? 'list' : 'grid'; } catch { return 'grid'; }
 };
 
@@ -267,7 +271,7 @@ export default function App() {
         {!items.length ? (
           <>
             <div className="drop-icon">{updating ? '🔄' : '⬆️'}</div>
-            <h2>{updating ? `Новое содержимое для «${updating}»` : 'Перетащите сюда файлы, ZIP или папку'}</h2>
+            <h2>{updating ? `Новое содержимое для «${updating}»` : (isTouch ? 'Загрузите сайт' : 'Перетащите сюда файлы, ZIP или папку')}</h2>
             <p className="muted">
               {updating ? 'Текущие файлы проекта будут полностью заменены. Ссылка останется прежней.' : 'HTML-файл, архив .zip или целую папку со статикой'}
             </p>
@@ -349,6 +353,7 @@ export default function App() {
               {shown.map((p) => (
                 <div className="trow" key={p.name}>
                   <span className="c-name">{nameCell(p)}</span>
+                  <span className="c-meta muted">{p.files} файл. · {fmtSize(p.size)} · {fmtDate(p.mtime)}</span>
                   <span className="c-files muted">{p.files}</span>
                   <span className="c-size muted">{fmtSize(p.size)}</span>
                   <span className="c-date muted">{fmtDate(p.mtime)}</span>
