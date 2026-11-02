@@ -1,0 +1,27 @@
+# Добавить в конец /home/mikhail/projects/expenses/infra/Caddyfile.public
+
+# Static Hub: админка + публичная статика (/public/static/*)
+vpnserver.smartyalta.ru {
+	encode zstd gzip
+	reverse_proxy statichub:80
+}
+
+# Статика по IP (HTTP на 80 и HTTPS с самоподписанным сертификатом)
+http://85.209.51.95 {
+	handle /public/static/* {
+		reverse_proxy statichub:80
+	}
+	handle {
+		redir https://vpnserver.smartyalta.ru{uri} permanent
+	}
+}
+
+https://85.209.51.95 {
+	tls internal
+	handle /public/static/* {
+		reverse_proxy statichub:80
+	}
+	handle {
+		redir https://vpnserver.smartyalta.ru{uri} permanent
+	}
+}

@@ -1,0 +1,32 @@
+{
+	# TLS терминирует внешний Caddy (проект expenses-tracker), здесь только обычный HTTP
+	auto_https off
+	admin off
+}
+
+:80 {
+	# Публичная статика: /public/static/<проект>/...
+	handle_path /public/static/* {
+		root * /sites/static
+		header Cache-Control "no-cache"
+		file_server
+	}
+
+	# Админка и API — под паролем
+	handle {
+		basic_auth {
+			{$ADMIN_USER} {$ADMIN_PASS_HASH}
+		}
+		request_body {
+			max_size 1GB
+		}
+		handle /api/* {
+			reverse_proxy hub-api:3000
+		}
+		handle {
+			root * /srv/app
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}
