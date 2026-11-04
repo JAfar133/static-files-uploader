@@ -33,7 +33,9 @@ compose up -d --build --remove-orphans
 
 log "Проверяю доступность из сети edge"
 for _ in $(seq 1 20); do
-  if docker run --rm --network edge caddy:2 wget -S -O /dev/null http://statichub/ 2>&1 | grep -q "401"; then
+  # Вывод сначала в переменную: `grep -q` в конце конвейера закрывает канал, и wget падает с SIGPIPE (при pipefail)
+  out="$(docker run --rm --network edge caddy:2 wget -S -O /dev/null http://statichub/ 2>&1 || true)"
+  if grep -q "401" <<<"$out"; then
     log "Готово: statichub отвечает в сети edge (401 без пароля — админка защищена)."
     docker ps --format '{{.Names}}' | grep -qx edge-caddy \
       || warn "контейнер edge-caddy не запущен: снаружи сайт заработает после его старта (vpnserver-infrastructure)."
