@@ -1,10 +1,13 @@
+# Внутренний Caddy Static Hub. Адрес сайта задаёт переменная SITE_ADDRESS:
+#   static-hub.example.com  — самостоятельный режим: Caddy сам выпускает HTTPS-сертификат (порты 80/443);
+#   :80                     — режим за общим (edge) Caddy: обычный HTTP внутри docker-сети, TLS делает edge.
 {
-	# TLS терминирует внешний Caddy (проект expenses-tracker), здесь только обычный HTTP
-	auto_https off
 	admin off
 }
 
-:80 {
+{$SITE_ADDRESS::80} {
+	encode zstd gzip
+
 	# Публичная статика: /public/static/<проект>/...
 	handle_path /public/static/* {
 		root * /sites/static

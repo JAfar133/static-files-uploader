@@ -1,0 +1,13 @@
+# Режим за общим Caddy (репозиторий vpnserver-infrastructure): порты не публикуются,
+# контейнер подключается к общей сети `edge` под алиасом `statichub`, TLS выпускает общий Caddy.
+services:
+  hub:
+    networks:
+      internal:
+      edge:
+        aliases: [statichub]
+
+networks:
+  edge:
+    external: true
+    name: edge

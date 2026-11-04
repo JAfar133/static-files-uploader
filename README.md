@@ -2,32 +2,45 @@
 
 Лёгкий загрузчик статических сайтов: React + Node (Express) + Caddy (автоматический HTTPS) в Docker.
 
-## Развёртывание
+## Развёртывание: два режима
 
-Порты 80/443 на сервере занимает Caddy проекта expenses-tracker, поэтому Static Hub не публикует портов:
-он подключается к docker-сети `expenses-tracker_default` (алиас `statichub`), а TLS даёт существующий Caddy.
+Один и тот же проект можно запустить двумя способами. Выбор делает скрипт: он записывает `COMPOSE_FILE` в `.env`,
+поэтому дальше работают и обычные команды `docker compose up -d --build`.
 
+| | Самостоятельный | За общим Caddy (edge) |
+|---|---|---|
+| Скрипт | `scripts/deploy-standalone.sh` | `scripts/deploy-edge.sh` |
+| Порты 80/443 | занимает сам | не публикует |
+| HTTPS-сертификат | выпускает свой Caddy | выпускает общий Caddy |
+| Когда | чистый сервер, один сервис | на сервере уже есть другие сайты |
+| Compose-файлы | `docker-compose.yml` + `.standalone.yml` | `docker-compose.yml` + `.edge.yml` |
+
+### Самостоятельно (чистый сервер)
+DNS-запись домена должна указывать на сервер, порты 80/443 свободны.
 ```bash
-./setup.sh                          # создаст .env (логин и хэш пароля)
-docker compose up -d --build        # поднимает hub-api и hub
+git clone git@github.com:JAfar133/static-files-uploader.git && cd static-files-uploader
+./scripts/deploy-standalone.sh --domain static-hub.example.com
 ```
+Скрипт проверит Docker, свободны ли порты, указывает ли домен на этот сервер, создаст `.env` (спросит логин и пароль
+админки или сгенерирует), запустит контейнеры и дождётся HTTPS. Обновление: `./scripts/deploy-standalone.sh --pull`.
 
-Затем в `/home/mikhail/projects/expenses/infra/Caddyfile.public` добавьте блоки из
-`caddy/expenses-caddy-snippet.txt` и перезагрузите конфиг без простоя
-(правьте файл «на месте», например `cat >>`, а не `sed -i`: bind-mount привязан к inode):
-
+### За общим Caddy (сервер vpnserver)
+Нужен репозиторий `vpnserver-infrastructure` (общий Caddy и сеть `edge`).
 ```bash
-docker exec expenses-tracker-web-1 caddy reload --config /etc/caddy/Caddyfile
+./scripts/deploy-edge.sh
 ```
+Скрипт проверит наличие сети `edge`, запустит контейнер под алиасом `statichub` без портов и убедится,
+что он отвечает внутри сети. Домен `static-hub.smartyalta.ru` описан в `vpnserver-infrastructure/caddy/sites/static-hub.caddy`.
 
-DNS `vpnserver.smartyalta.ru` уже указывает на `85.209.51.95`.
+Пароль админки меняется так: удалите строки `ADMIN_USER`/`ADMIN_PASS_HASH` из `.env` и запустите скрипт заново
+(или вручную: `docker run --rm -it caddy:2 caddy hash-password`, значение в одинарных кавычках в `ADMIN_PASS_HASH`).
 
 ## Использование
 
-1. Откройте `https://vpnserver.smartyalta.ru`, введите логин/пароль.
+1. Откройте `https://static-hub.smartyalta.ru`, введите логин/пароль.
 2. Перетащите в рамку HTML-файл, `.zip` или папку (или нажмите «Файлы / ZIP» / «Папка»).
 3. Задайте имя проекта и нажмите «Опубликовать».
-4. Проект доступен по `https://vpnserver.smartyalta.ru/public/static/<имя>/` и `http://<ip>/public/static/<имя>/`
+4. Проект доступен по `https://static-hub.smartyalta.ru/public/static/<имя>/` и `http://<ip>/public/static/<имя>/`
    (по IP через HTTPS — самоподписанный сертификат).
 
 Правила:

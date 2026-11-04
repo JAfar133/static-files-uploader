@@ -1,5 +1,7 @@
-# Static Hub не занимает порты 80/443: TLS отдаёт уже работающий Caddy проекта expenses-tracker,
-# а этот стек подключается к его docker-сети и принимает от него обычный HTTP.
+# Базовая часть Static Hub. Режим запуска выбирают наложения (см. README):
+#   docker-compose.standalone.yml — сам занимает 80/443 и выпускает HTTPS;
+#   docker-compose.edge.yml       — без портов, за общим Caddy (репозиторий vpnserver-infrastructure).
+# Обычно выбор делают скрипты scripts/deploy-standalone.sh и scripts/deploy-edge.sh (они записывают COMPOSE_FILE в .env).
 services:
   hub-api:
     build: ./api
@@ -19,18 +21,18 @@ services:
     restart: unless-stopped
     depends_on: [hub-api]
     env_file: .env
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
     volumes:
       - sites:/sites:ro
-    networks:
-      internal:
-      proxy:
-        aliases: [statichub]
+      - caddy_data:/data      # сертификаты (нужны в самостоятельном режиме)
+      - caddy_config:/config
+    networks: [internal]
 
 volumes:
   sites:
+  caddy_data:
+  caddy_config:
 
 networks:
   internal:
-  proxy:
-    external: true
-    name: expenses-tracker_default
